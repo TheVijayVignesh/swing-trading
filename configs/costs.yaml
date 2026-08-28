@@ -1,0 +1,10 @@
+# Transaction cost schedule — India equity delivery.
+# Versioned; loaded by sts.brokers.costs.load_cost_schedule (content-hash pinned).
+version: c1.0.0
+brokerage_per_order: 0.0        # flat, per order (discount-broker delivery)
+stt_sell_pct: 0.001             # Securities Transaction Tax, fraction of SELL turnover (0.1%)
+exchange_txn_pct: 0.0000297     # NSE transaction charge, fraction of turnover (both sides)
+gst_on_txn_pct: 0.18            # GST RATE (multiplier) on (brokerage + exchange txn + SEBI)
+sebi_per_crore: 10              # SEBI turnover fee, rupees per crore of turnover
+stamp_buy_pct: 0.00015          # stamp duty, fraction of BUY turnover only
+dp_charge_sell_flat: 13.0       # depository DP charge, flat per SELL trade (delivery)

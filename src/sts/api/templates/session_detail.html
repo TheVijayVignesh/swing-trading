@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set nav = 'lab' %}
+{% set d = session or {} %}
+{% set cfg = d.config | default({}, true) %}
+{% set act = d.activity | default({}, true) %}
+
+{% block title %}{{ d.name | default('Session') }}{% endblock %}
+{% block content %}
+<div data-page="detail" data-session-id="{{ d.id | default('') }}">
+  <nav aria-label="Breadcrumb" style="margin-bottom:16px;font-size:12px">
+    <a href="/">← Lab</a>
+  </nav>
+
+  {# ---- identity block (static; duration ticks via lab.js) ---- #}
+  <header class="detail-head">
+    <div style="flex:1 1 auto;min-width:260px">
+      <h1>{{ d.name | default('Untitled session') }}</h1>
+      <p class="dim mono" style="margin-top:4px">
+        {{ d.id | default('—') }} ·
+        strategy {{ cfg.strategy_id | default('—') }}<span data-strategy-version>{% if d.strategy_version %} · {{ d.strategy_version }}{% endif %}</span>
+        {% if cfg.param_version %} · params v{{ cfg.param_version }}{% endif %}
+      </p>
+    </div>
+    <div class="controls">
+      {% if act.state %}<span class="chip chip-on">{{ act.state }}</span>{% endif %}
+      <details class="card-menu detail-menu">
+        <summary aria-label="Session actions menu" title="Session actions">⋯ Session actions</summary>
+        <div class="menu-body" role="menu">
+          <button type="button" role="menuitem" data-session-action="archive"
+                  data-sid="{{ d.id | default('') }}">Archive</button>
+          <button type="button" role="menuitem" data-session-action="restore"
+                  data-sid="{{ d.id | default('') }}" hidden>Restore</button>
+          <button type="button" role="menuitem" data-session-action="clone"
+                  data-sid="{{ d.id | default('') }}"
+                  data-sname="{{ d.name | default('') }}">Clone…</button>
+          <button type="button" role="menuitem" data-session-action="delete"
+                  data-sid="{{ d.id | default('') }}"
+                  data-status="{{ d.status | default('') }}">Delete…</button>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <dl class="dossier identity-dossier" aria-label="Session identity">
+    <div><dt class="label">Created</dt>
+      <dd class="mono">{% if d.created_at %}<time data-rel="{{ d.created_at }}">{{ d.created_at }}</time>{% else %}—{% endif %}</dd></div>
+    <div><dt class="label">Started</dt>
+      <dd class="mono">{% if d.started_at %}<time data-rel="{{ d.started_at }}">{{ d.started_at }}</time>{% else %}not started{% endif %}</dd></div>
+    <div><dt class="label">Running</dt>
+      <dd class="mono" data-running-duration data-started-ts="{{ d.started_at or '' }}" data-ended-ts="{{ d.ended_at or '' }}">
+        {{ '—' if not d.started_at else '' }}</dd></div>
+    <div><dt class="label">Mode</dt><dd class="mono">{{ cfg.mode | default(d.mode, true) | default('—') }}</dd></div>
+    <div><dt class="label">Strategy</dt>
+      <dd class="mono">{{ cfg.strategy_id | default('—') }}{% if d.strategy_version %} · v{{ d.strategy_version }}{% endif %}</dd></div>
+    <div><dt class="label">ML</dt>
+      <dd class="mono">{% if d.ml_model_id and d.ml_model_id != 'deterministic' %}ON · {{ d.ml_model_id }}{% elif d.ml_model_id %}OFF (deterministic){% else %}—{% endif %}</dd></div>
+    <div><dt class="label">Config hash</dt><dd class="mono">{{ d.config_hash_short or '—' }}</dd></div>
+  </dl>
+
+  {# Polled region: live dossier below refreshes every 5s. #}
+  <div id="session-body"
+       hx-get="/sessions/{{ d.id }}" hx-select="#session-body" hx-swap="outerHTML"
+       hx-trigger="every 5s, refresh from:body">
+    {% include 'partials/session_body.html' %}
+  </div>
+
+  {# ---- session timeline (P1-7): fetched once + load-more; survives swaps ---- #}
+  <details class="timeline-wrap" id="timeline-section" open>
+    <summary><span class="label">Session timeline</span></summary>
+    <ol class="timeline" id="timeline-list" aria-label="Chronological session events"></ol>
+    <p class="dim" id="timeline-empty" hidden>No journaled events yet.</p>
+    <button type="button" class="btn btn-quiet" id="timeline-more" hidden>Load more</button>
+  </details>
+
+  {# Diagnostic scan output lives OUTSIDE the polled region so results survive swaps. #}
+  <section class="diagnostic-pane" id="diagnostic-pane" hidden aria-label="Diagnostic scan result">
+    <span class="label">Diagnostic scan <span class="chip chip-accent">DIAGNOSTIC</span></span>
+    <div id="diagnostic-output"></div>
+  </section>
+
+  {# Replay pane lives OUTSIDE the polled region so an open replay survives swaps. #}
+  <section class="replay-pane" id="replay-pane" hidden aria-label="Decision replay"></section>
+</div>
+{% endblock %}

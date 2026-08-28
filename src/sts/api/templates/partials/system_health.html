@@ -1,0 +1,32 @@
+{# System health strip — refreshed by the single consolidated JSON poller in
+   lab.js (initOverview); no separate htmx poller anymore. #}
+{% set sys = system or {} %}
+{% set fh = sys.feed_health or {} %}
+{% set fp = fh.primary or {} %}
+{% set fb = fh.fallback or {} %}
+{% set lb = fh.last_bar or {} %}
+<div id="health-strip" class="health-strip" aria-label="System health">
+  <span class="pill" data-health-feed
+        data-v="{{ sys.feed | default('—') }}">{{ sys.feed | default('—') }}</span>
+  <span class="health-item dim">
+    <span data-feed-age>{% if sys.last_tick_age_s %}{{ sys.last_tick_age_s }}s since last tick{% else %}no ticks yet{% endif %}</span>
+  </span>
+  <span class="health-item">DB <span class="mono" data-health-db>{{ 'ok' if sys.db_ok else 'degraded' }}</span></span>
+  <span class="health-item"><span class="mono" data-health-running>{{ sys.sessions_running | default(0) }} running</span></span>
+  <span class="health-item"><span class="mono" data-health-incidents>{{ sys.incidents_24h | default(0) }} incidents 24h</span></span>
+  <span class="health-item">heartbeat <span class="mono" data-heartbeat>{{ sys.heartbeat | default('—') }}</span></span>
+  <span class="health-item feed-health" id="feed-health"
+        data-degraded="{{ '1' if sys.feed_degraded else '0' }}">
+    <span>SRC <span class="mono" data-feed-source>{{ fh.source | default('—') }}</span></span>
+    <span>FEED <span class="mono" data-feed-state>{{ fh.state | default(sys.feed | default('—')) }}</span></span>
+    <span>LAST BAR <span class="mono" data-feed-last-bar>{% if lb %}{{ lb.symbol | default('?') }} {{ (lb.ts | string)[:19] | replace('T', ' ') }} IST{% else %}none yet{% endif %}</span></span>
+    <span>AGE <span class="mono" data-feed-age-h>{{ lb.age_s if lb.age_s is not none else '—' }}</span></span>
+    <span>DROPPED <span class="mono" data-feed-dropped>{{ fh.dropped_events | default(0) }}</span></span>
+    <span>PRIMARY <span class="mono" data-feed-primary
+          data-status="{{ fp.status | default('UNKNOWN') }}"
+          title="{{ fp.name | default('primary') }}{% if fp.consecutive_failures %} · {{ fp.consecutive_failures }} consecutive failures{% endif %}{% if fp.last_error %} · {{ fp.last_error }}{% endif %}">{{ fp.status | default('UNKNOWN') }}</span></span>
+    <span>FALLBACK <span class="mono" data-feed-fallback
+          data-status="{{ fb.status | default('UNKNOWN') }}"
+          title="{{ fb.name | default('fallback') }}{% if fb.consecutive_failures %} · {{ fb.consecutive_failures }} consecutive failures{% endif %}{% if fb.last_error %} · {{ fb.last_error }}{% endif %}">{{ fb.status | default('UNKNOWN') }}</span></span>
+  </span>
+</div>

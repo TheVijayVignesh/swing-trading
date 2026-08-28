@@ -1,0 +1,346 @@
+{# Session detail inner body — polled every 5s (see session_detail.html).
+   Context: d = GET /api/sessions/{id} detail object enriched with ADDENDUM v2
+   fields (activity, rejections, exposure_timeseries, …). All paths null-guarded. #}
+{% set pf = d.portfolio | default({}, true) %}
+{% set cfg = d.config | default({}, true) %}
+{% set f = d.funnel_latest or {} %}
+{% set st = d.status | default('CREATED') %}
+{% set act = d.activity | default({}, true) %}
+
+<header class="detail-head" style="border-bottom:0;margin-bottom:0">
+  <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="status-dot" data-s="{{ d.status | default('') }}" aria-hidden="true"></span>
+    <span class="chip chip-on">{{ d.status | default('—') }}</span>
+    {% if d.terminal_state %}<span class="chip chip-accent">{{ d.terminal_state }}</span>{% endif %}
+    {% if d.feed_status %}<span class="pill" data-v="{{ d.feed_status }}" data-market-pill
+        title="{% if d.feed_status == 'OPEN' %}NSE open — entries and exits are managed live{% elif d.feed_status == 'STALE' %}Feed stale — entries blocked fail-closed; open-position exits still managed{% else %}NSE closed — entries resume 09:15 IST; exits still managed{% endif %}"
+        >{{ d.feed_status }}</span>{% endif %}
+  </span>
+  <div class="controls">
+    <button type="button" class="btn" data-control="start"
+            {% if st != 'CREATED' %}disabled{% endif %}>Start</button>
+    <button type="button" class="btn" data-control="pause"
+            {% if st != 'RUNNING' %}disabled{% endif %}>Pause</button>
+    <button type="button" class="btn" data-control="resume"
+            {% if st != 'PAUSED' %}disabled{% endif %}>Resume</button>
+    {% set policy = cfg.on_stop_policy or 'FLATTEN' %}
+    <button type="button" class="btn btn-danger" data-control="stop" data-policy="{{ policy }}"
+            {% if st in ('STOPPED', 'ABORTED', 'STOPPING') %}disabled{% endif %}>
+      Stop · {{ policy }}</button>
+    <button type="button" class="btn" data-diagnostic-scan
+            data-sid="{{ d.id | default('') }}">Run diagnostic scan</button>
+  </div>
+</header>
+
+{# ---- ACTIVITY banner (ADDENDUM v2) ---- #}
+{% set act_state = act.state | default('', true) %}
+<div class="activity-banner" data-activity-state="{{ act_state }}"
+     role="status" aria-label="Session activity">
+  <span class="activity-icon" aria-hidden="true">{{ {
+    'TRADING': '◉', 'SCANNING': '◌', 'NO_SETUPS': '∅',
+    'RISK_BLOCKED': '⊘', 'WAITING_MARKET_OPEN': '◔', 'FEED_STALE': '≈', 'FAULTED': '✕',
+    'INITIALIZING': '◐'
+  }.get(act_state, '·') }}</span>
+  <div>
+    <strong>{{ act_state or 'UNKNOWN' }}</strong>
+    <span class="activity-sentence">{{ act.explanation | default('No activity recorded yet.', true) }}</span>
+    {% set bd = act.blocker_detail or {} %}
+    {% if bd.top_rejections %}
+      <span class="dim mono">top rejections:
+        {%- for pair in bd.top_rejections %} {{ pair[0] }}×{{ pair[1] }}{% if not loop.last %},{% endif %}{% endfor -%}</span>
+    {% elif bd.phase %}
+      <span class="dim mono">phase {{ bd.phase }}</span>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- portfolio strip ---- #}
+<section class="portfolio-strip" aria-label="Portfolio">
+  <div>
+    <span class="label">Equity</span>
+    <span class="equity-num" data-inr="{{ (pf.equity or 0) | int }}">{{ '{:.0f}'.format(pf.equity or 0) }}</span>
+  </div>
+  <div><span class="label">Cash</span>
+    <span class="mono" data-inr="{{ pf.cash or 0 }}">₹{{ '{:.0f}'.format(pf.cash or 0) }}</span></div>
+  <div><span class="label">Invested</span>
+    <span class="mono" data-inr="{{ pf.invested or 0 }}">₹{{ '{:.0f}'.format(pf.invested or 0) }}</span></div>
+  <div><span class="label">uPnL</span>
+    <span class="mono {{ 'pos' if (pf.unrealized or 0) > 0 else ('neg' if (pf.unrealized or 0) < 0 else '') }}"
+          data-inr="{{ (pf.unrealized or 0) | int }}">{{ '{:+,.0f}'.format(pf.unrealized or 0) }}</span></div>
+  <div><span class="label">rPnL</span>
+    <span class="mono {{ 'pos' if (pf.realized or 0) > 0 else ('neg' if (pf.realized or 0) < 0 else '') }}"
+          data-inr="{{ (pf.realized or 0) | int }}">{{ '{:+,.0f}'.format(pf.realized or 0) }}</span></div>
+  <div><span class="label">HWM</span>
+    <span class="mono" data-inr="{{ pf.hwm or 0 }}">₹{{ '{:.0f}'.format(pf.hwm or 0) }}</span></div>
+  <div><span class="label">Drawdown</span>
+    <span class="mono">{{ '%.2f' | format(pf.drawdown_pct or 0) }}%</span></div>
+</section>
+
+<div class="detail-grid">
+  <div>
+    {# ---- equity curve + benchmark overlay + drawdown ---- #}
+    <section class="panel" aria-label="Equity curve">
+      <span class="label">Equity curve
+        <span class="dim" id="benchmark-note-detail"></span></span>
+      <svg id="equity-chart" width="100%" height="260"
+           data-curve='{{ (d.equity_curve or []) | tojson }}'
+           data-dd='{{ (d.drawdown_curve or []) | tojson }}'></svg>
+      <span class="label" style="margin-top:12px">Drawdown</span>
+      <svg id="dd-chart" width="100%" height="110"
+           data-dd='{{ (d.drawdown_curve or []) | tojson }}'></svg>
+    </section>
+
+    {# ---- per-trade analytics (P1-8) ---- #}
+    <section class="panel chart-row" aria-label="Trade analytics">
+      <div>
+        <span class="label">Trade P&amp;L (per trade)</span>
+        <svg id="pnl-chart" width="100%" height="150"
+             data-pnl='[{% for t in d.trades or [] %}{{ t.pnl | default(0, true) }}{{ ',' if not loop.last }}{% endfor %}]'></svg>
+      </div>
+      <div>
+        <span class="label">R-multiple distribution</span>
+        <svg id="rdist-chart" width="100%" height="150"
+             data-r='[{% for t in d.trades or [] %}{% if t.r_multiple is not none %}{{ t.r_multiple }}{{ ',' if not loop.last }}{% endif %}{% endfor %}]'></svg>
+      </div>
+      <div>
+        <span class="label">Holding time (days)</span>
+        <svg id="holddist-chart" width="100%" height="150"
+             data-hold='[{% for t in d.trades or [] %}{{ t.hold_days | default(0, true) }}{{ ',' if not loop.last }}{% endfor %}]'></svg>
+      </div>
+      <div>
+        <span class="label">Exposure % through time</span>
+        <svg id="exposure-chart" width="100%" height="150"
+             data-exposure='{{ (d.exposure_timeseries or []) | tojson }}'></svg>
+      </div>
+    </section>
+
+    {# ---- positions ---- #}
+    <section class="panel" aria-label="Open positions">
+      <span class="label">Positions · {{ d.positions | default([], true) | length }} open</span>
+      {% if d.positions %}
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th scope="col">symbol</th><th scope="col">exch</th><th scope="col">qty</th><th scope="col">entry</th>
+              <th scope="col">last</th><th scope="col">stop</th><th scope="col">t1 / t2</th>
+              <th scope="col">trail</th><th scope="col">mkt val</th><th scope="col">uPnL</th><th scope="col">%</th>
+              <th scope="col">held d</th><th scope="col">risk ₹</th><th scope="col">entered</th>
+              <th scope="col">reason</th><th scope="col">ml score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in d.positions %}
+            <tr>
+              <td>{{ p.symbol }}</td>
+              <td>{{ p.exchange | default('NSE') }}</td>
+              <td>{{ p.qty }}</td>
+              <td>{{ '%.2f' | format(p.avg_entry or 0) }}</td>
+              <td>{{ '%.2f' | format(p.last_px or 0) }}</td>
+              <td>{{ '%.2f' | format(p.stop_px or 0) }}</td>
+              <td>{{ '%.2f' | format(p.target1_px or 0) }} / {{ '%.2f' | format(p.target2_px or 0) }}</td>
+              <td>{% if p.trail_px is not none %}{{ '%.2f' | format(p.trail_px) }}{% else %}—{% endif %}</td>
+              <td>{% if p.market_value is not none %}{{ '{:,.0f}'.format(p.market_value) }}{% else %}—{% endif %}</td>
+              <td class="{{ 'pos' if (p.unrealized_pnl or 0) > 0 else ('neg' if (p.unrealized_pnl or 0) < 0 else '') }}"
+                  data-inr="{{ (p.unrealized_pnl or 0) | int }}">{{ '{:+,.0f}'.format(p.unrealized_pnl or 0) }}</td>
+              <td class="{{ 'pos' if (p.pnl_pct or 0) > 0 else ('neg' if (p.pnl_pct or 0) < 0 else '') }}">
+                {{ '%+.2f' | format(p.pnl_pct or 0) }}%</td>
+              <td>{{ p.held_days | default(0) }}</td>
+              <td>{% if p.risk_amount is defined and p.risk_amount is not none %}{{ p.risk_amount }}{% else %}—{% endif %}</td>
+              <td class="dim">{% if p.entry_ts %}<time data-rel="{{ p.entry_ts }}">{{ p.entry_ts }}</time>{% else %}—{% endif %}</td>
+              <td class="dim">{{ p.entry_reason | default('—') }}</td>
+              <td class="dim">{% if p.ml_score is not none %}{{ '%.3f' | format(p.ml_score) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="dim" style="padding:16px 0">No open positions.</p>
+      {% endif %}
+    </section>
+
+    {# ---- trade history ---- #}
+    <section class="panel" aria-label="Trade history">
+      <span class="label">Trade history</span>
+      {% if d.trades %}
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th scope="col">symbol</th><th scope="col">side</th><th scope="col">qty</th>
+              <th scope="col">entry</th><th scope="col">exit</th><th scope="col">entry ts</th>
+              <th scope="col">exit ts</th><th scope="col">pnl ₹</th><th scope="col">R</th>
+              <th scope="col">hold d</th><th scope="col">fees</th><th scope="col">slippage</th>
+              <th scope="col">strategy</th><th scope="col">ml model</th>
+              <th scope="col">reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in d.trades %}
+            <tr>
+              <td>{{ t.symbol }}</td>
+              <td>{{ t.side | default('—') }}</td>
+              <td>{{ t.qty }}</td>
+              <td>{{ '%.2f' | format(t.entry_px or 0) }}</td>
+              <td>{% if t.exit_px is not none %}{{ '%.2f' | format(t.exit_px) }}{% else %}—{% endif %}</td>
+              <td>{{ t.entry_ts | default('—') }}</td>
+              <td>{% if t.exit_ts %}{{ t.exit_ts }}{% else %}open{% endif %}</td>
+              <td class="{{ 'pos' if (t.pnl or 0) > 0 else ('neg' if (t.pnl or 0) < 0 else '') }}"
+                  data-inr="{{ (t.pnl or 0) | int }}">{{ '{:+,.0f}'.format(t.pnl or 0) }}</td>
+              <td>{% if t.r_multiple is not none %}{{ '%.2f' | format(t.r_multiple) }}{% else %}—{% endif %}</td>
+              <td>{{ t.hold_days | default('—') }}</td>
+              <td class="dim">{% if t.fees is not none %}{{ '%.2f' | format(t.fees) }}{% elif t.costs is not none %}{{ '%.2f' | format(t.costs) }}{% else %}—{% endif %}</td>
+              <td class="dim">{% if t.slippage is not none %}{{ '%.2f' | format(t.slippage) }}{% else %}not journaled{% endif %}</td>
+              <td class="dim">{{ t.strategy_version | default('—') }}</td>
+              <td class="dim">{{ t.ml_model_id | default('—') }}</td>
+              <td class="dim">{{ t.entry_reason | default('?') }} → {{ t.exit_reason | default('?') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="dim" style="padding:16px 0">No closed trades yet.</p>
+      {% endif %}
+    </section>
+
+    {# ---- decisions ---- #}
+    <section class="panel" aria-label="Decision journal">
+      <span class="label">Decisions · last {{ d.decisions | default([], true) | length }}</span>
+      {% if d.decisions %}
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th scope="col">ts</th><th scope="col">symbol</th><th scope="col">action</th>
+              <th scope="col">score</th><th scope="col">reject reason</th><th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dec in d.decisions %}
+            <tr>
+              <td>{{ dec.ts | default('—') }}</td>
+              <td class="sym">{{ dec.symbol | default('—') }}</td>
+              <td><span class="action-chip" data-a="{{ dec.action | default('') }}">{{ dec.action | default('—') }}</span></td>
+              <td>{% if dec.score is not none %}{{ '%.3f' | format(dec.score) }}{% else %}—{% endif %}</td>
+              <td class="dim">{{ dec.rejection_reason | default('—') }}</td>
+              <td><button type="button" class="decision-row btn btn-quiet"
+                          data-decision-intent="{{ dec.intent_id }}">replay</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">Select “replay” to open the full decision chain.</p>
+      {% else %}
+      <div class="empty-state">
+        <svg width="56" height="56" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+          <path d="M60 22 C 52 8, 30 4, 18 14 C 5 25, 4 46, 15 57 C 27 68, 50 66, 59 52"
+                stroke-width="3.5" stroke-linecap="round" stroke="var(--ink-3)" opacity=".5"/>
+        </svg>
+        <p>{{ act.explanation | default('No qualifying opportunities yet — the session will journal every decision here.', true) }}</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside>
+    {# ---- decision funnel + rejection breakdown ---- #}
+    <section class="panel" aria-label="Decision pipeline funnel">
+      <span class="label">Pipeline · latest pass
+        {% if f.ts %}({{ f.ts }}){% endif %}</span>
+      {% set counts = [f.scanned or 0, f.eligible or 0, f.setups or 0,
+                        f.ml_passed or 0, f.portfolio_ok or 0,
+                        f.risk_ok or 0, f.selected or 0] %}
+      {% set stages = [
+        ('scanned', f.scanned), ('eligible', f.eligible), ('setups', f.setups),
+        ('ml passed', f.ml_passed), ('portfolio ok', f.portfolio_ok),
+        ('risk ok', f.risk_ok), ('selected', f.selected)
+      ] %}
+      {% set maxc = counts | max %}
+      <div class="funnel">
+        {% for name, count in stages %}
+        {% set c = counts[loop.index0] %}
+        <div class="funnel-stage {{ 'zero' if not c }}">
+          <span class="dim">{{ name }}</span>
+          <span class="bar-track">
+            <span class="bar" style="width:{{ (c / (maxc or 1) * 100) | round(1) }}%"></span>
+          </span>
+          <span class="count">{{ c }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% set rej = d.rejections or {} %}
+      {% if rej %}
+      <details class="rej-details" open>
+        <summary class="label">Rejection breakdown (journaled intents)</summary>
+        <table class="data rej-table">
+          <thead><tr><th scope="col">stage</th><th scope="col">reason</th><th scope="col">count</th></tr></thead>
+          <tbody>
+            {% for stage, reasons in rej.items() %}
+              {% for reason, count in reasons.items() %}
+              <tr><td>{{ stage }}</td><td>{{ reason }}</td><td>{{ count }}</td></tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% else %}
+      <p class="dim" style="margin-top:8px">No rejected candidates journaled yet.</p>
+      {% endif %}
+
+      {% if not f.selected %}
+      <p class="dim" style="margin-top:8px">
+        {{ act.explanation | default('No qualifying opportunities on the latest pass.', true) }}</p>
+      {% endif %}
+    </section>
+
+    {# ---- capital dossier block ---- #}
+    <section class="panel" aria-label="Capital state">
+      <span class="label">Capital</span>
+      <dl class="dossier">
+        <div><dt class="label">Initial</dt><dd class="mono" data-inr="{{ d.capital_initial or 0 }}">₹{{ '{:.0f}'.format(d.capital_initial or 0) }}</dd></div>
+        <div><dt class="label">Equity</dt><dd class="mono" data-inr="{{ pf.equity or 0 }}">₹{{ '{:.0f}'.format(pf.equity or 0) }}</dd></div>
+        <div><dt class="label">Max drawdown</dt><dd class="mono">{{ '%.2f' | format(pf.drawdown_pct or 0) }}%</dd></div>
+        <div><dt class="label">Gross exposure</dt><dd class="mono">{% if pf.get('gross_exposure') is not none %}{{ '%.2f' | format(pf.get('gross_exposure') * 100) }}%{% else %}—{% endif %}</dd></div>
+        <div><dt class="label">Open risk</dt><dd class="mono">{% if pf.get('total_open_risk') is not none %}{{ '%.2f' | format(pf.get('total_open_risk')) }}{% else %}—{% endif %}</dd></div>
+      </dl>
+    </section>
+
+    {# ---- system-state block ---- #}
+    <section class="panel" aria-label="System state">
+      <span class="label">System state</span>
+      <dl class="dossier">
+        <div><dt class="label">Feed</dt>
+          <dd class="mono">{{ d.feed_status | default('—') }}{% if d.feed_source %} · {{ d.feed_source }}{% endif %}</dd></div>
+        <div><dt class="label">Last bar</dt>
+          <dd class="mono">{% if d.last_bar %}{{ d.last_bar.symbol }} @ {{ d.last_bar.close }} <time data-rel="{{ d.last_bar.ts }}">{{ d.last_bar.ts }}</time>{% else %}no bar observed{% endif %}</dd></div>
+        <div><dt class="label">Latest journal event</dt>
+          <dd class="mono">{% if d.latest_journal_event %}{{ d.latest_journal_event.kind }} <time data-rel="{{ d.latest_journal_event.ts }}">{{ d.latest_journal_event.ts }}</time>{% else %}—{% endif %}</dd></div>
+        <div><dt class="label">Incidents</dt>
+          <dd class="mono">{{ d.incident_count | default(0) }}</dd></div>
+        <div><dt class="label">Cost schedule</dt>
+          <dd class="mono">{{ cfg.costs_version if cfg.costs_version else (d.costs_version | default('c1.0.0')) }}</dd></div>
+      </dl>
+    </section>
+
+    {# ---- config snapshot ---- #}
+    <section class="panel" aria-label="Configuration snapshot">
+      <span class="label">Config snapshot</span>
+      <dl style="margin:0;font-size:12px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px">
+        {% for key, val in cfg.items() %}
+        <dt class="dim">{{ key }}</dt>
+        <dd class="mono" style="margin:0;word-break:break-all">
+          {{- val if val is not none else '—' -}}
+        </dd>
+        {% else %}
+        <dt class="dim">config</dt><dd class="mono">unavailable</dd>
+        {% endfor %}
+      </dl>
+      <p class="hint">Last decision
+        {% if d.last_decision_at %}<time data-rel="{{ d.last_decision_at }}">{{ d.last_decision_at }}</time>{% else %}never{% endif %}</p>
+    </section>
+  </aside>
+</div>

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set nav = 'compare' %}
+
+{% block title %}Compare{% endblock %}
+{% block content %}
+<div data-page="compare" data-ids="{{ ids | default('') }}">
+  <header style="margin-bottom:32px">
+    <h1 style="font-size:clamp(28px,4vw,44px)">Compare sessions</h1>
+    <p class="dim" style="margin-top:8px">Overlay equity curves aligned by calendar time or by
+      trade number. Clones differing by one config field attribute cleanly.</p>
+  </header>
+
+  {% include 'partials/compare_body.html' %}
+</div>
+{% endblock %}

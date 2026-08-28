@@ -1,0 +1,80 @@
+{# Session card partial. Context: s = session summary object (API_CONTRACT summary shape).
+   Optional: best (bool) — featured brush-accent treatment.
+   All numerics carry data-* hooks; lab.js formats INR / ticks / sparkline.
+   The WHOLE card navigates to the session (click + Enter); interactive
+   controls inside stop propagation (see lab.js). #}
+{% set eq = s.equity or 0 %}
+{% set ret = s.return_pct or 0 %}
+{% set pnl = s.pnl_abs or 0 %}
+<article class="session-card{% if best %} is-best{% endif %} entering"
+         data-id="{{ s.id }}"
+         data-status="{{ s.status | default('') }}"
+         data-health="{{ s.health | default('ok') }}"
+         data-ml="{{ 'on' if s.ml_enabled else 'off' }}"
+         data-strategy="{{ s.strategy_id | default('') }}"
+         data-archived="{{ '1' if s.archived else '0' }}"
+         tabindex="0" role="link"
+         aria-label="Open session {{ s.name | default('Untitled') }} — status {{ s.status | default('unknown') }}">
+  {% if best %}<span class="best-flag">Best session</span>{% endif %}
+  {% if s.archived %}<span class="chip chip-accent archived-flag">Archived</span>{% endif %}
+
+  <div class="card-head">
+    <a class="card-name" href="/sessions/{{ s.id }}">{{ s.name | default('Untitled session') }}</a>
+    <span style="display:flex;align-items:center;gap:8px">
+      <span class="chip">{{ s.status | default('—') }}</span>
+      {% if s.terminal_state %}<span class="chip chip-accent">{{ s.terminal_state }}</span>{% endif %}
+      <span class="status-dot" data-s="{{ s.status | default('') }}"
+            role="img" aria-label="status {{ s.status | default('unknown') }}"></span>
+      {# overflow menu — stopPropagation keeps the card from navigating #}
+      <details class="card-menu">
+        <summary aria-label="Session actions menu" title="Session actions">⋯</summary>
+        <div class="menu-body" role="menu">
+          <button type="button" role="menuitem" data-card-action="archive"
+                  data-sid="{{ s.id }}">Archive</button>
+          <button type="button" role="menuitem" data-card-action="restore"
+                  data-sid="{{ s.id }}" {% if not s.archived %}hidden{% endif %}>Restore</button>
+          <button type="button" role="menuitem" data-card-action="clone"
+                  data-sid="{{ s.id }}" data-sname="{{ s.name | default('') }}">Clone…</button>
+          <button type="button" role="menuitem" data-card-action="delete"
+                  data-sid="{{ s.id }}" data-status="{{ s.status | default('') }}">Delete…</button>
+        </div>
+      </details>
+    </span>
+  </div>
+
+  <div class="equity-row">
+    <span class="label">Equity</span>
+    <span class="equity-num" data-equity data-inr="{{ (eq | round(0, 'common')) | int }}">{{ '{:.0f}'.format(eq) }}</span>
+    <span class="return-pct" data-return-pct data-sign>{{ '+' if ret >= 0 else '' }}{{ '%.2f' | format(ret) }}%</span>
+  </div>
+
+  <div class="card-stats">
+    <span class="stat"><span class="label">P&amp;L</span>
+      <span class="v" data-pnl-abs data-inr="{{ (pnl | round(0, 'common')) | int }}">{{ '{:+,.0f}'.format(pnl) }}</span></span>
+    <span class="stat"><span class="label">Max DD</span>
+      <span class="v" data-max-dd>{{ '%.1f' | format(s.max_dd_pct or 0) }}%</span></span>
+    <span class="stat"><span class="label">Trades</span>
+      <span class="v" data-trades-line>{{ s.trades | default(0) }} trades · {{ ((s.win_rate or 0) * 100) | round(0) }}% win</span></span>
+    <span class="stat"><span class="label">Open pos</span>
+      <span class="v" data-open-positions>{{ s.open_positions | default(0) }}</span></span>
+    <span class="stat"><span class="label">Capital</span>
+      <span class="v" data-inr="{{ s.capital_initial or 0 }}">₹{{ s.capital_initial or 0 }}</span></span>
+  </div>
+
+  <div class="spark-wrap">
+    {% if s.sparkline and s.sparkline | length > 1 %}
+      <svg data-spark='{{ s.sparkline | tojson }}' role="img"
+           aria-label="equity sparkline for {{ s.name | default('session') }}"></svg>
+    {% endif %}
+  </div>
+
+  <div class="card-foot">
+    <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span class="chip {{ 'chip-on' if s.ml_enabled else '' }}">ML {{ 'ON' if s.ml_enabled else 'OFF' }}</span>
+      <span class="chip">{{ s.strategy_id | default('strategy?') }}</span>
+      <span class="health-label" data-health-text="{{ s.health | default('ok') }}"
+            title="Session feed health">{{ 'health: faulted' if s.health == 'faulted' else ('health: stale feed' if s.health == 'stale' else 'health: ok') }}</span>
+    </span>
+    <span>last decision <span data-last-decision>{% if s.last_decision_at %}<time data-rel="{{ s.last_decision_at }}">{{ s.last_decision_at }}</time>{% else %}no decisions yet{% endif %}</span></span>
+  </div>
+</article>

@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% set nav = 'new' %}
+{% set universes = universes or ['NIFTY200'] %}
+{% set strategies = strategies or ['pullback-v1', 'random-k'] %}
+{% set risk_profiles = risk_profiles or ['micro', 'small', 'standard'] %}
+{% set stop_policies = stop_policies or ['FLATTEN', 'HOLD'] %}
+{% set cs = clone_source or none %}
+
+{% block title %}New Session{% endblock %}
+{% block content %}
+<div class="form-shell">
+  <header style="margin-bottom:40px">
+    <h1 style="font-size:clamp(28px,4vw,44px)">Open an experiment</h1>
+    <p class="dim" style="margin-top:8px;max-width:52ch">
+      A session scans its universe autonomously and selects its own first trade —
+      you never pick a symbol. The configuration below is snapshotted and
+      content-hashed at start.</p>
+    {% if cs %}
+    <p class="clone-note" role="note">Cloning <strong>{{ cs.name | default(cs.id) }}</strong> —
+      fresh capital, no state copied. Fields below are prefilled from its frozen config;
+      adjust anything before creating.</p>
+    {% endif %}
+  </header>
+
+  <form data-new-session-form novalidate>
+    {# honeypot — must remain empty; humans never see it #}
+    <input type="text" name="symbol" value="" tabindex="-1"
+           autocomplete="off" aria-hidden="true"
+           style="position:absolute;left:-9999px;width:0;height:0;opacity:0;border:0;padding:0" hidden>
+
+    {# ================= BASIC ================= #}
+    <h2 class="form-section-title">Basic</h2>
+
+    <div class="field">
+      <label class="label" for="f-name">Name</label>
+      <input type="text" id="f-name" name="name" required maxlength="80"
+             value="{{ '' if not cs else (cs.name | default('') ) }}{% if not cs %}{% endif %}"
+             placeholder="hybrid-main · aug run">
+      <p class="hint">A short label. Lineup runs are named automatically.</p>
+    </div>
+
+    <div class="field">
+      <label class="label" for="f-capital">Initial capital (₹)</label>
+      <input type="number" id="f-capital" name="capital_initial"
+             min="1000" step="500" value="{{ cs.capital_initial if cs and cs.capital_initial else 25000 }}"
+             inputmode="numeric" required>
+      <p class="hint">Minimum ₹1,000 · steps of ₹500</p>
+    </div>
+
+    <div class="field">
+      <span class="label" id="lbl-mode">Mode</span>
+      <div class="radio-row" role="radiogroup" aria-labelledby="lbl-mode">
+        <label class="radio-pill">
+          <input type="radio" name="mode" value="paper" checked disabled>
+          <span>PAPER <small class="mono">selected</small></span>
+        </label>
+        <label class="radio-pill" title="Interlocked — not available">
+          <input type="radio" name="mode" value="live" disabled>
+          <span title="Interlocked — not available">LIVE
+            <small class="mono">interlocked — not available</small></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="label" for="f-universe">Universe</label>
+      <select id="f-universe" name="universe">
+        {% for u in universes %}
+        <option value="{{ u }}" {{ 'selected' if cs and cs.universe == u else ('selected' if u == 'NIFTY200' and not cs) }}>{{ u }} (dated snapshot)</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="label" for="f-strategy">Strategy</label>
+      <select id="f-strategy" name="strategy_id">
+        {% for s in strategies %}
+        <option value="{{ s }}" {{ 'selected' if cs and cs.strategy_id == s else ('selected' if s == 'pullback-v1' and not cs) }}>{{ s }}{% if s == 'random-k' %} (baseline){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="label" id="lbl-risk">Risk profile</span>
+      <div class="radio-row" role="radiogroup" aria-labelledby="lbl-risk">
+        {% set profiles_meta = {
+          'micro':   '2% risk/trade · 60% position cap · ₹3,000 min notional — default under ₹30k',
+          'small':   '1.5% risk/trade · 33% position cap · ₹4,000 min notional — suits ₹30k–₹50k',
+          'standard':'1% risk/trade · 20% position cap · ₹5,000 min notional — larger accounts'
+        } %}
+        {% for p in ['micro', 'small', 'standard'] %}
+        <label class="radio-pill" title="{{ profiles_meta[p] }}">
+          <input type="radio" name="risk_profile" value="{{ p }}"
+                 data-profile-meta="{{ profiles_meta[p] }}"
+                 {{ 'checked' if cs and cs.risk_profile == p else ('checked' if p == 'small' and not cs) }}>
+          <span>{{ p }}<br><small class="mono">{{ profiles_meta[p] }}</small></span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="hint" id="risk-suggest-hint" aria-live="polite"></p>
+    </div>
+
+    <div class="field">
+      <label class="switch">
+        <input type="checkbox" id="f-ml" name="ml_enabled" {{ 'checked' if cs and cs.ml_enabled }}>
+        <span class="track" aria-hidden="true"></span>
+        <span>ML model enabled</span>
+      </label>
+      <p class="hint">Deterministic-only until a model passes validation.</p>
+    </div>
+
+    <div class="field">
+      <span class="label" id="lbl-stop">Stop policy</span>
+      <div class="radio-row" role="radiogroup" aria-labelledby="lbl-stop">
+        <label class="radio-pill">
+          <input type="radio" name="on_stop_policy" value="FLATTEN" checked>
+          <span>FLATTEN <small class="mono">exit everything on stop</small></span>
+        </label>
+        <label class="radio-pill">
+          <input type="radio" name="on_stop_policy" value="HOLD">
+          <span>HOLD <small class="mono">freeze, keep positions</small></span>
+        </label>
+      </div>
+    </div>
+
+    {# ================= STRATEGY PARAMETERS ================= #}
+    <details class="params-details" id="strategy-params-details" open>
+      <summary><span class="form-section-title">Strategy Parameters
+        <small class="dim mono">pullback-v1 defaults prefilled</small></span></summary>
+
+      {% set strat_fields = [
+        ('sma_fast','SMA fast','int',5,200,20,''),
+        ('sma_slow','SMA slow','int',10,400,50,''),
+        ('slope_lookback','Slope lookback (bars)','int',3,100,10,''),
+        ('rsi_period','RSI period','int',2,50,14,''),
+        ('rsi_low','RSI low gate','float',0,100,45,''),
+        ('rsi_high','RSI high gate','float',0,100,70,''),
+        ('atr_period','ATR period','int',2,50,14,''),
+        ('stop_atr_mult','Initial stop × ATR','float',0.2,10,1.5,''),
+        ('trail_atr_mult','Trail × ATR','float',0.2,10,1.5,''),
+        ('vol_lookback','Volume lookback (bars)','int',5,100,20,''),
+        ('vol_mult','Volume spike × avg','float',1,10,1.5,''),
+        ('pullback_lookback','Pullback lookback (bars)','int',2,50,5,''),
+        ('pullback_atr_thresh','Pullback depth × ATR','float',0.1,10,1.0,''),
+        ('breakout_lookback','Breakout lookback (bars)','int',5,200,20,''),
+        ('min_rr','Min reward:risk','float',0.5,20,1.5,'')
+      ] %}
+      <div class="param-grid">
+        {% for key,label,typ,mn,mx,dv,unit in strat_fields %}
+        <div class="param-cell">
+          <label class="label" for="sp-{{ key }}">{{ label }}</label>
+          <input type="number" id="sp-{{ key }}" name="param:{{ key }}"
+                 data-param-type="{{ typ }}" min="{{ mn }}" max="{{ mx }}"
+                 step="{{ 'any' if typ == 'float' else 1 }}"
+                 value="{{ dv }}">
+        </div>
+        {% endfor %}
+        <div class="param-cell">
+          <label class="label" for="sp-entry_window_end">Entry window end (IST)</label>
+          <input type="time" id="sp-entry_window_end" name="param:entry_window_end"
+                 value="14:30" step="60">
+        </div>
+        {# sent as risk_overrides per ADDENDUM v2, edited here with the trade knobs #}
+        <div class="param-cell">
+          <label class="label" for="rp-t1_multiple">T1 multiple (R)</label>
+          <input type="number" id="rp-t1_multiple" name="risk:t1_multiple"
+                 data-risk-param="t1_multiple" min="0.1" max="10" step="any" value="1.0">
+        </div>
+        <div class="param-cell">
+          <label class="label" for="rp-t2_multiple">T2 multiple (R)</label>
+          <input type="number" id="rp-t2_multiple" name="risk:t2_multiple"
+                 data-risk-param="t2_multiple" min="0.5" max="30" step="any" value="3.0">
+        </div>
+        <div class="param-cell">
+          <label class="label" for="rp-time_stop_days">Time stop (days)</label>
+          <input type="number" id="rp-time_stop_days" name="risk:time_stop_days"
+                 data-risk-param="time_stop_days" min="1" max="90" step="1" value="10">
+        </div>
+      </div>
+    </details>
+
+    {# ================= RISK PARAMETERS ================= #}
+    <details class="params-details" id="risk-params-details">
+      <summary><span class="form-section-title">Risk Parameters
+        <small class="dim mono">profile defaults shown; edits become risk_overrides</small></span></summary>
+
+      {% set risk_fields = [
+        ('max_positions','Max concurrent positions','int',1,20,4),
+        ('max_total_open_risk','Max total open risk (fraction)','float',0.001,0.5,0.02),
+        ('max_gross_exposure','Max gross exposure (fraction)','float',0.05,1,0.8),
+        ('daily_loss_limit','Daily loss limit (fraction)','float',0.005,0.5,0.03),
+        ('drawdown_kill','Drawdown kill-switch (fraction)','float',0.01,1,0.10),
+        ('max_sector_positions','Max positions per sector','int',1,10,2),
+        ('max_sector_exposure','Max sector exposure (fraction)','float',0.05,1,0.40),
+        ('max_correlation','Max pairwise correlation','float',0.1,1,0.7),
+        ('max_adv_participation','Max ADV participation (fraction)','float',0.0005,0.1,0.005)
+      ] %}
+      <div class="param-grid">
+        {% for key,label,typ,mn,mx,dv in risk_fields %}
+        <div class="param-cell">
+          <label class="label" for="rp-{{ key }}">{{ label }}</label>
+          <input type="number" id="rp-{{ key }}" name="risk:{{ key }}"
+                 data-risk-param="{{ key }}" data-param-type="{{ typ }}"
+                 min="{{ mn }}" max="{{ mx }}"
+                 step="{{ 'any' if typ == 'float' else 1 }}" value="{{ dv }}">
+        </div>
+        {% endfor %}
+        {# profile-resolved trio — prefilled by lab.js from the selected profile #}
+        <div class="param-cell">
+          <label class="label" for="rp-min_notional">Min notional (₹)</label>
+          <input type="number" id="rp-min_notional" name="risk:min_notional"
+                 data-risk-param="min_notional" min="500" max="1000000" step="100"
+                 value="4000" placeholder="from profile">
+          <p class="hint">Prefilled from the selected profile; edit to override.</p>
+        </div>
+        <div class="param-cell">
+          <label class="label" for="rp-risk_per_trade">Risk per trade (fraction)</label>
+          <input type="number" id="rp-risk_per_trade" name="risk:risk_per_trade"
+                 data-risk-param="risk_per_trade" min="0.001" max="0.2" step="any"
+                 value="0.015" placeholder="from profile">
+        </div>
+        <div class="param-cell">
+          <label class="label" for="rp-max_position_pct">Max position (% of equity)</label>
+          <input type="number" id="rp-max_position_pct" name="risk:max_position_pct"
+                 data-risk-param="max_position_pct" min="0.01" max="1" step="any"
+                 value="0.33" placeholder="from profile">
+        </div>
+      </div>
+    </details>
+
+    {# ================= EXECUTION ASSUMPTIONS (read-only) ================= #}
+    <details class="params-details" id="exec-assumptions">
+      <summary><span class="form-section-title">Execution assumptions
+        <small class="dim mono">read-only — how orders are simulated</small></span></summary>
+      <dl class="exec-dl">
+        <dt>Fill model</dt>
+        <dd>Entries fill on the next 5m bar close at close ± half-spread.
+            Stops fill at stop − slippage − half-spread; if a bar gaps through
+            the stop, the full gap loss is taken at the open.</dd>
+        <dt>Slippage tiers</dt>
+        <dd>Adverse-only: base tier for liquid bars; illiquid/low-volume bars pay
+            base × low-volume multiplier (fail-conservative).</dd>
+        <dt>Cost schedule</dt>
+        <dd><span class="mono">c1.0.0</span> — brokerage, STT (sell), exchange txn,
+            SEBI, GST, stamp duty (buy), DP charge (sell). Every component rounded
+            to the paisa; totals balance against the paper ledger.</dd>
+        <dt>Data</dt>
+        <dd>5-minute bars, IST-naive timestamps; daily candles for context.
+            Entries blocked fail-closed whenever the feed is stale or closed.</dd>
+      </dl>
+    </details>
+
+    <section class="effconfig" aria-label="Effective configuration summary">
+      <span class="label">Effective configuration</span>
+      <pre class="effconfig-body" id="effective-config" aria-live="polite"></pre>
+    </section>
+    <div class="config-preview" id="config-preview" hidden aria-label="Request payload preview"></div>
+
+    <div style="display:flex;gap:12px;margin-top:32px;flex-wrap:wrap">
+      <button type="submit" class="btn btn-primary">Create Session</button>
+      <button type="button" class="btn" data-recommended-lineup
+              data-lineup-capital-input="#f-capital">
+        Start Recommended Lineup</button>
+      <a class="btn btn-quiet" href="/">Cancel</a>
+    </div>
+    <p class="hint" style="margin-top:12px">Nothing is created until you press
+      “Create Session” — the lineup button always asks first.</p>
+  </form>
+</div>
+{% endblock %}

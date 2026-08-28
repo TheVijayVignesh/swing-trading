@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% set nav = 'lab' %}
+
+{% block title %}Lab Overview{% endblock %}
+{% block content %}
+<section class="hero" aria-label="Swing Lab">
+  <span class="rising-disc" aria-hidden="true"></span>
+  <svg class="ink-stroke" viewBox="0 0 600 40" aria-hidden="true"
+       preserveAspectRatio="none" style="height:34px">
+    <path d="M4 28 C 90 8, 170 36, 260 20 S 430 6, 596 24"
+          fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"
+          opacity="0.9"/>
+  </svg>
+  <div class="petals" aria-hidden="true"></div>
+  <h1 class="wordmark-hero">SWING<br>LAB</h1>
+  <p class="subtitle">Autonomous market experiments in motion.</p>
+  <span class="side-label" aria-hidden="true">自動売買研究所</span>
+</section>
+
+{% include 'partials/system_health.html' %}
+
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px">
+  <button type="button" class="btn btn-primary" data-recommended-lineup
+          data-lineup-capital-input="#f-capital">
+    Start Recommended Lineup</button>
+  <a class="btn" href="/sessions/new">Configure manually</a>
+</div>
+
+{# ---- recent decisions strip (last 8 across sessions) ---- #}
+<section class="panel recent-decisions" aria-label="Recent decisions across sessions"
+         data-recent-decisions>
+  <span class="label">Recent decisions · last 8 across sessions</span>
+  {% if recent_decisions %}
+  <ul class="recent-strip">
+    {% for r in recent_decisions %}
+    <li class="recent-item">
+      <a href="/sessions/{{ r.session_id }}" class="recent-session">{{ r.session_name | default('session') }}</a>
+      <span class="action-chip" data-a="{{ r.action | default('') }}">{{ r.action | default('—') }}</span>
+      <span class="sym mono">{{ r.symbol | default('—') }}</span>
+      {% if r.rejection_reason %}<span class="dim">{{ r.rejection_reason }}</span>{% endif %}
+      <time class="dim mono" data-rel="{{ r.ts }}">{{ r.ts }}</time>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="dim" style="padding:10px 0">No decisions journaled yet — they will appear here the moment any session scans.</p>
+  {% endif %}
+</section>
+
+<div class="filters" role="group" aria-label="Session filters" data-filters>
+  <button type="button" class="filter-chip" data-filter-status="ALL" aria-pressed="true">All</button>
+  <button type="button" class="filter-chip" data-filter-status="RUNNING" aria-pressed="false">Running</button>
+  <button type="button" class="filter-chip" data-filter-status="PAUSED" aria-pressed="false">Paused</button>
+  <button type="button" class="filter-chip" data-filter-status="TERMINAL" aria-pressed="false">Stopped</button>
+  <button type="button" class="filter-chip" data-filter-archived aria-pressed="{{ 'true' if show_archived else 'false' }}"
+          title="Show archived sessions (grayed, restorable)">Archived</button>
+  <label class="visually-hidden" for="f-filter-ml">ML filter</label>
+  <select id="f-filter-ml" class="filter-chip" data-filter-ml>
+    <option value="ANY">ML any</option>
+    <option value="on">ML on</option>
+    <option value="off">ML off</option>
+  </select>
+  <label class="visually-hidden" for="f-filter-strategy">Strategy filter</label>
+  <select id="f-filter-strategy" class="filter-chip" data-filter-strategy>
+    <option value="ANY">Strategy any</option>
+    <option value="pullback-v1">pullback-v1</option>
+    <option value="random-k">random-k</option>
+  </select>
+</div>
+
+{% if best %}
+  {% with s = best, best = true %}{% include 'partials/session_card.html' %}{% endwith %}
+  <div style="height:16px"></div>
+{% endif %}
+
+<div class="card-grid" id="lab-grid" aria-label="Sessions ranked by return">
+  {% for s in sessions or [] %}
+    {% if not best or s.id != best.id %}
+      {% include 'partials/session_card.html' %}
+    {% endif %}
+  {% else %}
+    <div class="empty-state" style="grid-column:1/-1" id="overview-empty">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+        <path d="M60 22 C 52 8, 30 4, 18 14 C 5 25, 4 46, 15 57 C 27 68, 50 66, 59 52 C 63 45, 64 38, 62 31"
+              stroke-width="3.5" stroke-linecap="round" fill="none" stroke="var(--ink-2)" opacity=".5"/>
+      </svg>
+      <p>No sessions yet. Press ＋ to open your first experiment.</p>
+    </div>
+  {% endfor %}
+</div>
+<p class="dim" style="text-align:center;padding:16px 0" id="grid-empty" hidden>No sessions match these filters.</p>
+
+<a class="fab" href="/sessions/new" aria-label="New session">＋</a>
+<span class="fab-note" aria-hidden="true">new experiment</span>
+{% endblock %}

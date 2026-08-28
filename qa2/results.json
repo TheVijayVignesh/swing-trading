@@ -1,0 +1,128 @@
+{
+  "checks": [
+    {
+      "name": "summary count == db active sessions",
+      "ok": true,
+      "detail": "api=3 db=3"
+    },
+    {
+      "name": "card click navigates to detail",
+      "ok": true,
+      "detail": "http://127.0.0.1:8787/sessions/5107f5f506bb4c5592f56981c6ce1e1d"
+    },
+    {
+      "name": "UI equity == DB equity",
+      "ok": false,
+      "detail": "ui=null api=25000 db=25000"
+    },
+    {
+      "name": "API equity == DB equity",
+      "ok": true,
+      "detail": "api=25000 db=25000"
+    },
+    {
+      "name": "advanced param rsi_min present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "advanced param max_positions present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "create redirects to detail",
+      "ok": true,
+      "detail": "http://127.0.0.1:8787/sessions/29d4cba72f8442e7a470302d91463394"
+    },
+    {
+      "name": "DB config contains rsi_low override",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DB config contains max_positions override",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "config_hash stored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "delete CREATED session works",
+      "ok": true,
+      "detail": "status=204"
+    },
+    {
+      "name": "scan results rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "scan_funnels persisted",
+      "ok": true,
+      "detail": "count=14"
+    },
+    {
+      "name": "timeline returns events",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pause works",
+      "ok": true,
+      "detail": "PAUSED"
+    },
+    {
+      "name": "resume works",
+      "ok": true,
+      "detail": "RUNNING"
+    },
+    {
+      "name": "clone works",
+      "ok": true,
+      "detail": "status=201"
+    },
+    {
+      "name": "clone shares config params",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "clone carries risk params",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive works",
+      "ok": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "archived excluded from summary",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archived visible via board toggle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile no horizontal overflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "zero console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "issues": [
+    "UI equity == DB equity ui=null api=25000 db=25000"
+  ],
+  "consoleErrors": []
+}

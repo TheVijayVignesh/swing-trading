@@ -1,0 +1,53 @@
+{# SWING LAB — base shell. All pages extend this. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg"/>
+    <title>{% block title %}Swing Lab{% endblock %} · Swing Lab</title>
+  <link rel="stylesheet" href="/static/css/design-system.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script>
+    /* apply stored theme before first paint to avoid flash */
+    (function () {
+      try {
+        var t = localStorage.getItem("sl-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="inner">
+      <a class="wordmark" href="/">SWING <em>LAB</em></a>
+      <nav class="main-nav" aria-label="Primary">
+        <a href="/" {% if nav == 'lab' %}aria-current="page"{% endif %}>Lab</a>
+        <a href="/sessions/new" {% if nav == 'new' %}aria-current="page"{% endif %}>New Session</a>
+        <a href="/compare" {% if nav == 'compare' %}aria-current="page"{% endif %}>Compare</a>
+      </nav>
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Switch theme">☾</button>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <span class="mode-badge">PAPER</span>
+    <span>data-source: NIFTY200 · 5m bars</span>
+    <span>heartbeat <span class="mono" id="footer-heartbeat" data-heartbeat>{{ heartbeat | default('—') }}</span></span>
+    <span style="margin-left:auto">自動売買研究所</span>
+  </footer>
+
+  {# polite live region for background status updates #}
+  <div id="sr-status" class="visually-hidden" role="status" aria-live="polite"></div>
+
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/lab.js"></script>
+</body>
+</html>
